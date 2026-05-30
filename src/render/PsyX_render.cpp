@@ -433,6 +433,7 @@ void GR_BeginScene()
 	g_lastBoundTexture = 0;
 
 #if USE_OPENGL
+	GR_SetScissorState(0);
 #ifdef RENDERER_OGLES
 	glClearDepthf(1.0f);
 #else
