@@ -1509,7 +1509,7 @@ void GR_SetOffscreenState(const RECT16* offscreenRect, int enable)
 	{
 		GR_SetViewPort(0, 0, g_windowWidth, g_windowHeight);
 
-#if USE_OFFSCREEN_BLIT
+#if USE_OFFSCREEN_BLIT && !defined(RENDERER_OGLES)
 		// before drawing set source and target
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, g_glVRAMFramebuffer);
@@ -1532,8 +1532,36 @@ void GR_SetOffscreenState(const RECT16* offscreenRect, int enable)
 #endif
 		
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		// copy rendering results to VRAM texture
 		{
+#if defined(RENDERER_OGLES)
+			// GLES glReadPixels reads from the bound framebuffer, not the bound texture.
+			// Read the offscreen target directly, then update the emulated VRAM texture.
+			glBindFramebuffer(GL_FRAMEBUFFER, g_glOffscreenFramebuffer);
+#if USE_PBO
+			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+#endif
+			glReadPixels(0, 0, g_PreviousOffscreen.w, g_PreviousOffscreen.h, GL_RGBA, GL_UNSIGNED_BYTE, g_glOffscreenPBO.pixels);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			GR_CopyRGBAFramebufferToVRAM((u_int*)g_glOffscreenPBO.pixels,
+				g_PreviousOffscreen.x, g_PreviousOffscreen.y,
+				g_PreviousOffscreen.w, g_PreviousOffscreen.h,
+				USE_OFFSCREEN_BLIT == 0, 1);
+
+#if OGLES_VERSION == 3
+			glBindTexture(GL_TEXTURE_2D, g_vramTexture);
+			glPixelStorei(GL_UNPACK_ROW_LENGTH, VRAM_WIDTH);
+			glTexSubImage2D(GL_TEXTURE_2D, 0,
+				g_PreviousOffscreen.x, g_PreviousOffscreen.y,
+				g_PreviousOffscreen.w, g_PreviousOffscreen.h,
+				VRAM_FORMAT, GL_UNSIGNED_BYTE,
+				vram + g_PreviousOffscreen.x + g_PreviousOffscreen.y * VRAM_WIDTH);
+			glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+			glBindTexture(GL_TEXTURE_2D, g_lastBoundTexture);
+#else
+			vram_need_update = 1;
+#endif
+#else
 			// reat the texture
 			glBindTexture(GL_TEXTURE_2D, g_offscreenRTTexture);
 			//glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
@@ -1544,6 +1572,7 @@ void GR_SetOffscreenState(const RECT16* offscreenRect, int enable)
 			GR_CopyRGBAFramebufferToVRAM((u_int*)g_glOffscreenPBO.pixels, 
 				g_PreviousOffscreen.x, g_PreviousOffscreen.y, g_PreviousOffscreen.w, g_PreviousOffscreen.h, 
 				USE_OFFSCREEN_BLIT == 0, 1);
+#endif
 		}
 
 	}
